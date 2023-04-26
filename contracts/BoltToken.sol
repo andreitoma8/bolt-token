@@ -67,6 +67,34 @@ contract BoltToken is ERC20 {
     mapping(address => uint256) public amountBought;
 
     /**
+     * @notice Emits when tokens are bought.
+     * @param buyer The address of the buyer.
+     * @param amount The amount of tokens bought.
+     */
+    event TokensBought(address indexed buyer, uint256 amount);
+
+    /**
+     * @notice Emits when tokens are claimed.
+     * @param claimer The address of the claimer.
+     * @param amount The amount of tokens claimed.
+     */
+    event TokensClaimed(address indexed claimer, uint256 amount);
+
+    /**
+     * @notice Emits when ETH is refunded.
+     * @param buyer The address of the buyer.
+     * @param amount The amount of ETH refunded.
+     */
+    event EthRefunded(address indexed buyer, uint256 amount);
+
+    /**
+     * @notice Emits when the sale is ended.
+     * @param totalAmountBought The total amount of tokens bought.
+     * @param softCapReached Whether the soft cap has been reached and the sale is successful.
+     */
+    event SaleEnded(uint256 totalAmountBought, bool softCapReached);
+
+    /**
      * @notice Initializes all the variables, mints the total supply and creates the vesting schedules.
      * @param _price The price of the token in wei, with 18 decimals. For example 1 BOLT = 0.0001 ETH, then price = 100000000000000 wei.
      * @param _start The start date of the sale in unix timestamp.
@@ -149,6 +177,8 @@ contract BoltToken is ERC20 {
             // update the amount of tokens bought by the user
             amountBought[msg.sender] += amountToBuy;
         }
+
+        emit TokensBought(msg.sender, amountToBuy);
     }
 
     /**
@@ -176,6 +206,8 @@ contract BoltToken is ERC20 {
             vestingContract.createVestingSchedule(
                 msg.sender, block.timestamp, 3, VestingContract.DurationUnits.Weeks, amountToVest
             );
+
+            emit TokensClaimed(msg.sender, amountToSend);
         } else {
             // compute the amount of ETH to refund
             uint256 amountToRefund = amountBought[msg.sender] * price / 10 ** decimals();
@@ -184,6 +216,8 @@ contract BoltToken is ERC20 {
             // refund the user
             (bool sc,) = payable(msg.sender).call{value: amountToRefund}("");
             require(sc, "Refund failed");
+
+            emit EthRefunded(msg.sender, amountToRefund);
         }
     }
 
@@ -241,6 +275,8 @@ contract BoltToken is ERC20 {
 
             _lockLiquidity();
         }
+
+        emit SaleEnded(totalAmountBought, softCapReached);
     }
 
     /**
