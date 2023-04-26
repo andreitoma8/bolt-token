@@ -3,13 +3,12 @@ import chai, { expect } from "chai";
 import chaiAsPromised from "chai-as-promised";
 import { ethers } from "hardhat";
 
-import { BoltToken, MockSwap, VestingContract } from "../typechain-types";
+import { BoltToken, VestingContract } from "../typechain-types";
 
 chai.use(chaiAsPromised);
 
 describe("Bolt ICO and Vesting", function () {
     let bolt: BoltToken;
-    let swap: any;
     let vesting: VestingContract;
 
     let deployer: SignerWithAddress;
@@ -41,15 +40,12 @@ describe("Bolt ICO and Vesting", function () {
 
 
     beforeEach(async function () {
-        const MockSwap = await ethers.getContractFactory("MockSwap");
-        swap = (await MockSwap.deploy()) as MockSwap;
-
         startTime = (await ethers.provider.getBlock("latest")).timestamp + 60;
         endTime = startTime + 60 * 60 * 24;
         liquidityUnlcokDate = endTime + 60 * 60 * 24;
 
         const BoltToken = await ethers.getContractFactory("BoltToken");
-        bolt = (await BoltToken.deploy(startTime, endTime, liquidityUnlcokDate, [deployer.address, teamWallet.address, daoWallet.address, airdropWallet.address], swap.address, swap.address)) as BoltToken;
+        bolt = (await BoltToken.deploy(startTime, endTime, [deployer.address, teamWallet.address, daoWallet.address, airdropWallet.address])) as BoltToken;
 
         vesting = await ethers.getContractAt("VestingContract", await bolt.getVestingContract()) as VestingContract;
     });
@@ -59,7 +55,6 @@ describe("Bolt ICO and Vesting", function () {
             expect(await bolt.totalSupply()).to.equal(ethers.utils.parseEther("420690000000"));
             expect(await bolt.start()).to.equal(startTime);
             expect(await bolt.end()).to.equal(endTime);
-            expect(await bolt.liquidityUnlockDate()).to.equal(liquidityUnlcokDate);
         });
 
         it("should initialize vesting correctly", async function () {
@@ -97,16 +92,12 @@ describe("Bolt ICO and Vesting", function () {
             });
         });
 
-        describe("claim", function () {
-            it("should revert if the user has not bought any tokens", async function () {
-                await expect(bolt.connect(alice).claim()).to.be.revertedWith("You have no tokens to claim");
-            });
-
+        describe("airdrop", function () {
             it("should revert if the sale has not ended", async function () {
                 await increaseTime(60);
                 await bolt.connect(alice).buy({ value: ethers.utils.parseEther("0.2") });
 
-                await expect(bolt.connect(alice).claim()).to.be.revertedWith("Sale has not ended yet");
+                await expect(bolt.connect(alice).airdrop([])).to.be.revertedWith("Sale has not ended yet");
             });
 
             it("should correctly claim ETH", async function () {
@@ -116,7 +107,7 @@ describe("Bolt ICO and Vesting", function () {
 
                 await bolt.endSale();
 
-                await expect(bolt.connect(alice).claim()).to.changeEtherBalance(alice, ethers.utils.parseEther("0.2").sub(1));
+                await expect(bolt.connect(alice).airdrop([alice.address])).to.changeEtherBalance(alice, ethers.utils.parseEther("0.2").sub(1));
             });
 
             it("should correctly claim tokens", async function () {
@@ -128,7 +119,7 @@ describe("Bolt ICO and Vesting", function () {
 
                 await bolt.endSale();
 
-                await bolt.connect(alice).claim();
+                await bolt.connect(alice).airdrop([alice.address]);
 
                 const totalTokensBoughtAlice = ethers.utils.parseEther("10").mul(ethers.utils.parseEther("1")).div(await bolt.PRICE());
                 const tokensToBeSentAlice = totalTokensBoughtAlice.div(4);
@@ -165,43 +156,13 @@ describe("Bolt ICO and Vesting", function () {
                 expect(await bolt.saleEnded()).to.be.true;
             });
 
-            it("should correctly send ETH to the team wallet", async function () {
+            it("should correctly send ETH and Token to the team wallet", async function () {
                 await increaseTime(60);
                 await bolt.connect(alice).buy({ value: ethers.utils.parseEther("30") });
                 await increaseTime(60 * 60 * 24 + 1);
 
-                await expect(bolt.endSale()).to.changeEtherBalance(deployer, ethers.utils.parseEther("17.5"));
-            });
-
-            it("should correctly add liquidity", async function () {
-                await increaseTime(60);
-                await bolt.connect(alice).buy({ value: ethers.utils.parseEther("30") });
-                await increaseTime(60 * 60 * 24 + 1);
-
-                await expect(bolt.endSale()).to.changeTokenBalance(bolt, swap, liquidityAllocation);
-                expect(await swap.balanceOf(bolt.address)).to.equal(ethers.utils.parseEther("100"));
-            });
-        });
-
-        describe("unlockLiquidity", function () {
-            it("should revert if the liquidity is still locked", async function () {
-                await increaseTime(60);
-                await bolt.connect(alice).buy({ value: ethers.utils.parseEther("30") });
-                await increaseTime(60 * 60 * 24 + 1);
-                await bolt.endSale();
-
-                await expect(bolt.unlockLiquidity()).to.be.revertedWith("Liquidity is still locked");
-            });
-
-            it("should correctly unlock liquidity", async function () {
-                await increaseTime(60);
-                await bolt.connect(alice).buy({ value: ethers.utils.parseEther("30") });
-                await increaseTime(60 * 60 * 24 + 1);
-                await bolt.endSale();
-                await increaseTime(60 * 60 * 24 * 30 + 1);
-
-                await expect(bolt.unlockLiquidity()).to.emit(bolt, "LiquidityUnlocked");
-                expect(await swap.balanceOf(deployer.address)).to.equal(ethers.utils.parseEther("100"));
+                await expect(bolt.endSale()).to.changeEtherBalance(deployer, ethers.utils.parseEther("30"));
+                expect(await bolt.balanceOf(deployer.address)).to.equal(liquidityAllocation);
             });
         });
     });

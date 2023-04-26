@@ -89,9 +89,7 @@ contract BoltToken is ERC20, Initializable {
      * @param _end The end date of the sale in unix timestamp.
      * @param _wallets The addresses of the project: 0 = project wallet, 1 = team wallet, 2 = dao treasury wallet, 3 = airdrop wallet.
      */
-    constructor(uint256 _start, uint256 _end, address[4] memory _wallets)
-        ERC20("Bolt Token", "BOLT")
-    {
+    constructor(uint256 _start, uint256 _end, address[4] memory _wallets) ERC20("Bolt Token", "BOLT") {
         vestingContract = new VestingContract(address(this));
         _mint(address(this), TOTAL_SUPPLY);
 
@@ -196,7 +194,7 @@ contract BoltToken is ERC20, Initializable {
         if (address(this).balance >= SOFT_CAP) {
             softCapReached = true;
 
-            _transfer(address(this), address(this), LIQUIDITY_ALLOCATION);
+            _transfer(address(this), wallets[0], LIQUIDITY_ALLOCATION);
 
             // send the tokens to the project wallet
             uint256 amountToSend = address(this).balance;
