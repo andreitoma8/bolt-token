@@ -113,7 +113,7 @@ contract BoltToken is ERC20 {
         IRouter _router,
         IPoolFactory _factory
     ) ERC20("Bolt Token", "BOLT") {
-        _mint(address(this), 141982875000 * 10 ** decimals());
+        _mint(address(this), TOTAL_SUPPLY);
 
         // set up all the variables
         price = _price;
@@ -294,7 +294,7 @@ contract BoltToken is ERC20 {
         inputs[1] = IRouter.TokenInput({token: address(0), amount: ETH_FOR_LIQUIDITY});
 
         router.addLiquidity{value: ETH_FOR_LIQUIDITY}(
-            address(pool), inputs, abi.encode(0, 0), 0, address(this), abi.encode(0)
+            address(pool), inputs, abi.encode(0), 0, address(this), abi.encode(0)
         );
     }
 }
