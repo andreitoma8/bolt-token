@@ -15,6 +15,7 @@ describe("Bolt ICO and Vesting", function () {
     let teamWallet: SignerWithAddress;
     let daoWallet: SignerWithAddress;
     let airdropWallet: SignerWithAddress;
+    let cexWallet: SignerWithAddress;
 
     let alice: SignerWithAddress;
     let bob: SignerWithAddress;
@@ -35,7 +36,7 @@ describe("Bolt ICO and Vesting", function () {
     };
 
     before(async function () {
-        [deployer, teamWallet, daoWallet, airdropWallet, alice, bob, carol] = await ethers.getSigners();
+        [deployer, teamWallet, daoWallet, airdropWallet, cexWallet, alice, bob, carol] = await ethers.getSigners();
     });
 
 
@@ -45,7 +46,7 @@ describe("Bolt ICO and Vesting", function () {
         liquidityUnlcokDate = endTime + 60 * 60 * 24;
 
         const BoltToken = await ethers.getContractFactory("BoltToken");
-        bolt = (await BoltToken.deploy(startTime, endTime, [deployer.address, teamWallet.address, daoWallet.address, airdropWallet.address])) as BoltToken;
+        bolt = (await BoltToken.deploy(startTime, endTime, [deployer.address, teamWallet.address, daoWallet.address, airdropWallet.address, cexWallet.address])) as BoltToken;
 
         vesting = await ethers.getContractAt("VestingContract", await bolt.getVestingContract()) as VestingContract;
     });

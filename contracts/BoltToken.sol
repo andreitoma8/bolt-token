@@ -13,7 +13,8 @@ contract BoltToken is ERC20, Initializable {
     uint256 public constant TEAM_ALLOCATION = 21_034_500_000 * 10 ** 18;
     uint256 public constant DAO_TREASURY_ALLOCATION = 21_034_500_000 * 10 ** 18;
     uint256 public constant AIR_DROP_ALLOCATION = 21_034_500_000 * 10 ** 18;
-    uint256 public constant PUBLIC_SALE_ALLOCATION = 294_483_000_000 * 10 ** 18;
+    uint256 public constant CEX_ALLOCATION = 42_069_000_000 * 10 ** 18;
+    uint256 public constant PUBLIC_SALE_ALLOCATION = 252_414_000_000 * 10 ** 18;
     uint256 public constant PRICE = 50 ether * 10 ** 18 / PUBLIC_SALE_ALLOCATION;
     uint256 public constant SOFT_CAP = 25 ether;
 
@@ -42,7 +43,7 @@ contract BoltToken is ERC20, Initializable {
      */
     uint256 public end;
 
-    address[4] public wallets; // [projectWallet, teamWallet, daoTreasuryWallet, airDropWallet]
+    address[5] public wallets; // [projectWallet, teamWallet, daoTreasuryWallet, airDropWallet, cexWallet]
 
     /**
      * @notice The amount of tokens bought by each address.
@@ -81,9 +82,9 @@ contract BoltToken is ERC20, Initializable {
      * @notice Initializes all the variables, mints the total supply and creates the vesting schedules.
      * @param _start The start date of the sale in unix timestamp.
      * @param _end The end date of the sale in unix timestamp.
-     * @param _wallets The addresses of the project: 0 = project wallet, 1 = team wallet, 2 = dao treasury wallet, 3 = airdrop wallet.
+     * @param _wallets The addresses of the project: 0 = project wallet, 1 = team wallet, 2 = dao treasury wallet, 3 = airdrop wallet, 4 = cex wallet.
      */
-    constructor(uint256 _start, uint256 _end, address[4] memory _wallets) ERC20("Bolt Token", "BOLT") {
+    constructor(uint256 _start, uint256 _end, address[5] memory _wallets) ERC20("Bolt Token", "BOLT") {
         vestingContract = new VestingContract(address(this));
         _mint(address(this), TOTAL_SUPPLY);
 
@@ -93,18 +94,29 @@ contract BoltToken is ERC20, Initializable {
         wallets = _wallets;
     }
 
+    /**
+     * @notice Initializes the vesting schedules.
+     */
     function initializeVesting() external initializer {
+        // To be unlocked 10% every month, starting 6 months after the sale ends
         _approve(address(this), address(vestingContract), TEAM_ALLOCATION);
         vestingContract.createVestingSchedule(
             wallets[1], block.timestamp + 6 * 30 days, 10, VestingContract.DurationUnits.Months, TEAM_ALLOCATION
         );
+        // To be unlocked 10% every month, starting 30 days after the sale ends
         _approve(address(this), address(vestingContract), DAO_TREASURY_ALLOCATION);
         vestingContract.createVestingSchedule(
             wallets[2], block.timestamp + 30 days, 10, VestingContract.DurationUnits.Months, DAO_TREASURY_ALLOCATION
         );
+        // To be totally unlocked 14 days after the sale ends
         _approve(address(this), address(vestingContract), AIR_DROP_ALLOCATION);
         vestingContract.createVestingSchedule(
             wallets[3], block.timestamp + 14 days, 0, VestingContract.DurationUnits.Months, AIR_DROP_ALLOCATION
+        );
+        // To be totally unlocked 14 days after the sale ends
+        _approve(address(this), address(vestingContract), CEX_ALLOCATION);
+        vestingContract.createVestingSchedule(
+            wallets[4], block.timestamp + 14 days, 0, VestingContract.DurationUnits.Months, CEX_ALLOCATION
         );
     }
 
