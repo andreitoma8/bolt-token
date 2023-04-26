@@ -78,12 +78,6 @@ contract BoltToken is ERC20, Initializable {
     event SaleEnded(uint256 totalAmountBought, bool softCapReached);
 
     /**
-     * @notice Emits when the liquidity is unlocked.
-     * @param liquidity The amount of liquidity tokens.
-     */
-    event LiquidityUnlocked(uint256 liquidity);
-
-    /**
      * @notice Initializes all the variables, mints the total supply and creates the vesting schedules.
      * @param _start The start date of the sale in unix timestamp.
      * @param _end The end date of the sale in unix timestamp.
