@@ -2,11 +2,12 @@
 pragma solidity ^0.8.9;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 import "./interfaces/IRouter.sol";
 import "./interfaces/IPoolFactory.sol";
 import "./VestingContract.sol";
 
-contract BoltToken is ERC20 {
+contract BoltToken is ERC20, Initializable {
     IERC20 pool;
     IRouter router;
     IPoolFactory factory;
@@ -18,6 +19,7 @@ contract BoltToken is ERC20 {
     uint256 public constant DAO_TREASURY_ALLOCATION = 21_034_500_000 * 10 ** 18;
     uint256 public constant AIR_DROP_ALLOCATION = 21_034_500_000 * 10 ** 18;
     uint256 public constant PUBLIC_SALE_ALLOCATION = 294_483_000_000 * 10 ** 18;
+    uint256 public constant PRICE = 50 ether * 10 ** 18 / PUBLIC_SALE_ALLOCATION;
     uint256 public constant SOFT_CAP = 25 ether;
     uint256 public constant ETH_FOR_LIQUIDITY = 12.5 ether;
 
@@ -30,11 +32,6 @@ contract BoltToken is ERC20 {
      * @notice Whether the sale has ended.
      */
     bool public saleEnded;
-
-    /**
-     * @notice The price of the token in wei, with 18 decimals. For example 1 BOLT = 0.0001 ETH, then price = 100000000000000 wei.
-     */
-    uint256 public price;
 
     /**
      * @notice The total amount of tokens bought.
@@ -56,10 +53,7 @@ contract BoltToken is ERC20 {
      */
     uint256 public liquidityUnlockDate;
 
-    /**
-     * @notice The address of the project wallet/multi-sig.
-     */
-    address projectWallet;
+    address[4] public wallets; // [projectWallet, teamWallet, daoTreasuryWallet, airDropWallet]
 
     /**
      * @notice The amount of tokens bought by each address.
@@ -95,8 +89,13 @@ contract BoltToken is ERC20 {
     event SaleEnded(uint256 totalAmountBought, bool softCapReached);
 
     /**
+     * @notice Emits when the liquidity is unlocked.
+     * @param liquidity The amount of liquidity tokens.
+     */
+    event LiquidityUnlocked(uint256 liquidity);
+
+    /**
      * @notice Initializes all the variables, mints the total supply and creates the vesting schedules.
-     * @param _price The price of the token in wei, with 18 decimals. For example 1 BOLT = 0.0001 ETH, then price = 100000000000000 wei.
      * @param _start The start date of the sale in unix timestamp.
      * @param _end The end date of the sale in unix timestamp.
      * @param _liquidityUnlockDate The date when the liquidity will be unlocked in unix timestamp.
@@ -105,7 +104,6 @@ contract BoltToken is ERC20 {
      * @param _factory The address of the pool factory of SyncSwap.
      */
     constructor(
-        uint256 _price,
         uint256 _start,
         uint256 _end,
         uint256 _liquidityUnlockDate,
@@ -113,70 +111,52 @@ contract BoltToken is ERC20 {
         IRouter _router,
         IPoolFactory _factory
     ) ERC20("Bolt Token", "BOLT") {
+        vestingContract = new VestingContract(address(this));
         _mint(address(this), TOTAL_SUPPLY);
 
         // set up all the variables
-        price = _price;
         start = _start;
         end = _end;
         liquidityUnlockDate = _liquidityUnlockDate;
-        projectWallet = _wallets[0];
+        wallets = _wallets;
         router = _router;
         factory = _factory;
-        vestingContract = new VestingContract(address(this));
+    }
 
-        // create the vesting schedules
+    function initializeVesting() external initializer {
         _approve(address(this), address(vestingContract), TEAM_ALLOCATION);
         vestingContract.createVestingSchedule(
-            _wallets[1], block.timestamp + 6 * 30 days, 10, VestingContract.DurationUnits.Months, TEAM_ALLOCATION
+            wallets[1], block.timestamp + 6 * 30 days, 10, VestingContract.DurationUnits.Months, TEAM_ALLOCATION
         );
         _approve(address(this), address(vestingContract), DAO_TREASURY_ALLOCATION);
         vestingContract.createVestingSchedule(
-            _wallets[2], block.timestamp + 30 days, 10, VestingContract.DurationUnits.Months, DAO_TREASURY_ALLOCATION
+            wallets[2], block.timestamp + 30 days, 10, VestingContract.DurationUnits.Months, DAO_TREASURY_ALLOCATION
         );
         _approve(address(this), address(vestingContract), AIR_DROP_ALLOCATION);
         vestingContract.createVestingSchedule(
-            _wallets[3], block.timestamp + 14 days, 0, VestingContract.DurationUnits.Months, AIR_DROP_ALLOCATION
+            wallets[3], block.timestamp + 14 days, 0, VestingContract.DurationUnits.Months, AIR_DROP_ALLOCATION
         );
     }
 
     /**
      * @notice Buys tokens with ETH.
-     * @dev The amount of tokens bought is calculated by multiplying the amount of ETH sent by the price.
+     * @dev The amount of tokens bought is calculated by multiplying the amount of ETH sent by the PRICE.
      */
     function buy() external payable {
         require(block.timestamp >= start, "Sale has not started yet");
         require(block.timestamp <= end, "Sale has ended");
-        require(msg.value > 0, "You must send ETH");
+        require(msg.value > 0, "Amount must be greater than 0");
         require(!saleEnded, "Sale has ended");
 
         // compute the amount of tokens to buy
-        uint256 amountToBuy = msg.value * 10 ** decimals() / price;
+        uint256 amountToBuy = msg.value * 10 ** decimals() / PRICE;
 
         // update the total amount of tokens bought
         totalAmountBought += amountToBuy;
+        require(totalAmountBought <= PUBLIC_SALE_ALLOCATION, "Not enough tokens left for sale");
 
-        // check if the hard cap has been reached
-        if (totalAmountBought > PUBLIC_SALE_ALLOCATION) {
-            // compute the amount of tokens available to buy and refund the rest
-            uint256 availableTokens = PUBLIC_SALE_ALLOCATION - (totalAmountBought - amountToBuy);
-            amountToBuy = availableTokens;
-
-            uint256 amountToRefund = msg.value - (amountToBuy * price / 10 ** decimals());
-
-            amountBought[msg.sender] += amountToBuy;
-
-            totalAmountBought = PUBLIC_SALE_ALLOCATION;
-
-            // end the sale
-            _endSale();
-
-            (bool sc,) = payable(msg.sender).call{value: amountToRefund}("");
-            require(sc, "Refund failed");
-        } else {
-            // update the amount of tokens bought by the user
-            amountBought[msg.sender] += amountToBuy;
-        }
+        // update the amount of tokens bought by the user
+        amountBought[msg.sender] += amountToBuy;
 
         emit TokensBought(msg.sender, amountToBuy);
     }
@@ -185,8 +165,8 @@ contract BoltToken is ERC20 {
      * @notice Claim either the tokens or the ETH depending on whether the soft cap has been reached or not.
      */
     function claim() external {
-        require(saleEnded, "Sale has not ended yet");
         require(amountBought[msg.sender] > 0, "You have no tokens to claim");
+        require(saleEnded, "Sale has not ended yet");
 
         // if the soft cap has been reached, send the 25% tokens to the user
         // and lock the other 75% to be vested over 3 weeks, otherwise, refund the user
@@ -210,7 +190,7 @@ contract BoltToken is ERC20 {
             emit TokensClaimed(msg.sender, amountToSend);
         } else {
             // compute the amount of ETH to refund
-            uint256 amountToRefund = amountBought[msg.sender] * price / 10 ** decimals();
+            uint256 amountToRefund = amountBought[msg.sender] * PRICE / 10 ** decimals();
             // reset the amount of tokens bought by the user
             amountBought[msg.sender] = 0;
             // refund the user
@@ -226,10 +206,25 @@ contract BoltToken is ERC20 {
      * @dev If the soft cap has been reached, the liquidity is locked and the tokens are sent to the project wallet.
      */
     function endSale() external {
-        require(block.timestamp > end, "Sale has not ended yet");
+        require(block.timestamp > end || totalAmountBought == PUBLIC_SALE_ALLOCATION, "Sale has not ended yet");
         require(!saleEnded, "Sale has already ended");
 
-        _endSale();
+        // mark the sale as ended
+        saleEnded = true;
+
+        // if the soft cap has been reached, lock the liquidity and send the tokens to the project wallet
+        if (address(this).balance >= SOFT_CAP) {
+            softCapReached = true;
+
+            // send the tokens to the project wallet
+            uint256 amountToSend = address(this).balance - ETH_FOR_LIQUIDITY;
+            (bool sc,) = payable(wallets[0]).call{value: amountToSend}("");
+            require(sc, "Transfer failed");
+
+            _lockLiquidity();
+        }
+
+        emit SaleEnded(totalAmountBought, softCapReached);
     }
 
     /**
@@ -240,7 +235,9 @@ contract BoltToken is ERC20 {
         require(block.timestamp > liquidityUnlockDate, "Liquidity is still locked");
 
         uint256 liquidity = pool.balanceOf(address(this));
-        pool.transfer(projectWallet, liquidity);
+        pool.transfer(wallets[0], liquidity);
+
+        emit LiquidityUnlocked(liquidity);
     }
 
     /**
@@ -255,28 +252,6 @@ contract BoltToken is ERC20 {
      */
     function getPool() external view returns (address) {
         return address(pool);
-    }
-
-    /**
-     * @notice Ends the sale.
-     */
-    function _endSale() internal {
-        // mark the sale as ended
-        saleEnded = true;
-
-        // if the soft cap has been reached, lock the liquidity and send the tokens to the project wallet
-        if (address(this).balance >= SOFT_CAP) {
-            softCapReached = true;
-
-            // send the tokens to the project wallet
-            uint256 amountToSend = address(this).balance - ETH_FOR_LIQUIDITY;
-            (bool sc,) = payable(projectWallet).call{value: amountToSend}("");
-            require(sc, "Transfer failed");
-
-            _lockLiquidity();
-        }
-
-        emit SaleEnded(totalAmountBought, softCapReached);
     }
 
     /**
